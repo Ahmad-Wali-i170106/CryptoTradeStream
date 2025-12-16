@@ -1,0 +1,21 @@
+[project]
+name = "crypto-trade-average-stream"
+version = "0.1.0"
+description = "A streaming pipeline that ingests live cryptocurrency trade data (or social media mock streams), processes it using PySpark to calculate moving averages in real-time, and pushes alerts to a streamlit dashboard."
+readme = "README.md"
+authors = [
+    { name = "Ahmad Wali Bin Saeed", email = "wali26.pakistan@yahoo.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "confluent-kafka>=2.12.2",
+    "loguru>=0.7.3",
+    "pandas>=2.3.3",
+    "pyspark>=4.0.1",
+    "rel>=0.4.9.22",
+    "streamlit>=1.52.1",
+    "tzdata>=2025.2",
+    "websocket>=0.2.1",
+    "websocket-client>=1.9.0",
+    "websockets>=15.0.1",
+]

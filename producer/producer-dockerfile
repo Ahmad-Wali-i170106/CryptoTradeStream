@@ -1,0 +1,18 @@
+FROM python:3.12-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system deps for confluent-kafka (librdkafka)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends librdkafka-dev gcc && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install dependencies
+RUN pip install --no-cache-dir loguru websocket-client confluent-kafka rel
+
+# Copy application code
+COPY crypto_producer.py /app/crypto_producer.py
+
+# Set the default command to run the producer
+CMD ["python", "crypto_producer.py"]

@@ -1,0 +1,22 @@
+FROM spark:4.0.1-scala2.13-java21-ubuntu
+
+USER root
+
+RUN set -ex; \
+    apt-get update; \
+    apt-get install -y python3 python3-pip; \
+    rm -rf /var/lib/apt/lists/*
+
+USER spark
+
+COPY spark_processor.py /app/spark_processor.py
+WORKDIR /app
+
+ENV SPARK_PACKAGES="org.apache.spark:spark-sql-kafka-0-10_2.13:4.0.1,org.apache.kafka:kafka-clients:3.5.1"
+
+
+
+CMD ["/opt/spark/bin/spark-submit", \
+     "--master", "local[*]", \
+     "--packages", "org.apache.spark:spark-sql-kafka-0-10_2.13:4.0.1,org.apache.kafka:kafka-clients:3.5.1", \
+     "spark_processor.py"]

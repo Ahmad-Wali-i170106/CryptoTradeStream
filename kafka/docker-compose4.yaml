@@ -1,0 +1,31 @@
+services:
+  kafka:
+    image: apache/kafka:latest
+    container_name: kafka
+    ports:
+      - "9092:9092"
+    environment:
+      CLUSTER_ID: q1W2e6F1t5H3u6i0J8R0weQ48Edaos
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+      - ./kraft-server.properties:/opt/kafka/config/kraft-server.properties:ro
+
+    entrypoint:
+      - sh
+      - -c
+      - |
+
+        export PATH=$PATH:/opt/kafka/bin
+
+        if [ ! -f "/var/lib/kafka/data/meta.properties" ]; then
+          echo "Formatting KRaft storage with cluster ID $CLUSTER_ID ..."
+          /opt/kafka/bin/kafka-storage.sh format \
+            --config /opt/kafka/config/kraft-server.properties \
+            --cluster-id "$CLUSTER_ID" \
+            --standalone
+        fi
+
+        exec /opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/kraft-server.properties
+
+volumes:
+  kafka_data:

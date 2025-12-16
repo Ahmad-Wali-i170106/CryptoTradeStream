@@ -1,0 +1,84 @@
+services:
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    hostname: kafka
+    container_name: kafka
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      KAFKA_KRAFT_MODE: "true"
+      KAFKA_NODE_ID: 1
+      KAFKA_BROKER_ID: 1
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://localhost:9092,PLAINTEXT://kafka:9092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
+      KAFKA_LOG_DIRS: "/var/lib/kafka/data"
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      CLUSTER_ID: "EmptNWtoR4GGWx-BH6nGLQ"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0 # No delay for consumer rebalancing.
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 1
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_AUTOCREATE_TOPICS_ENABLE: "false"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+
+  kafka-init:
+    image: confluentinc/cp-kafka:latest # Use the same image to ensure tools are present
+    container_name: kafka-init
+    depends_on:
+      - kafka # Crucial: Ensure the broker is up before attempting to create topics
+    volumes:
+      - ./kafka/create-topics.sh:/tmp/create-topics.sh:z # Mount the script
+    # The command to execute the script once the container starts
+    command: ["bash", "/tmp/create-topics.sh"]
+    environment:
+      # Use the same network settings/internal host name
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+
+  producer:
+    # build:
+    # context: ./producer
+    # dockerfile: producer/producer-dockerfile
+    image: crypto_producer:latest
+    container_name: producer
+    depends_on:
+      - kafka-init
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+
+  spark-processor:
+    # Use 'build' instead of 'image'
+    # build:
+    # context: .
+    # dockerfile: spark_processor/spark-processor-dockerfile # Assuming the Dockerfile is in the current directory
+    image: crypto_spark_processor:latest
+    container_name: spark-processor
+    depends_on:
+      - kafka-init
+    volumes:
+      # You still need a volume for the CRITICAL checkpoint location!
+      - ./spark_processor/checkpoint:/tmp/spark/checkpoint/vwap
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+
+  dashboard:
+    # build:
+    # context: ./dashboard
+    # dockerfile: dashboard/dashboard-dockerfile
+    image: crypto_dashboard:latest
+    container_name: dashboard
+    depends_on:
+      - kafka-init
+    ports:
+      - "8000:8000"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+
+volumes:
+  kafka_data:
