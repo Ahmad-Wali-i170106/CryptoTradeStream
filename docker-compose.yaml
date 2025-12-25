@@ -13,7 +13,7 @@ services:
       KAFKA_PROCESS_ROLES: "broker,controller"
       KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
       KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
-      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://localhost:9092,PLAINTEXT://kafka:9092"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT"
       KAFKA_LOG_DIRS: "/var/lib/kafka/data"
       KAFKA_LOG_RETENTION_HOURS: 168
@@ -21,30 +21,25 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
       CLUSTER_ID: "EmptNWtoR4GGWx-BH6nGLQ"
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0 # No delay for consumer rebalancing.
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_DEFAULT_REPLICATION_FACTOR: 1
-      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_MIN_INSYNC_REPLICAS: 1
       KAFKA_AUTOCREATE_TOPICS_ENABLE: "false"
     volumes:
       - kafka_data:/var/lib/kafka/data
 
   kafka-init:
-    image: confluentinc/cp-kafka:latest # Use the same image to ensure tools are present
+    image: confluentinc/cp-kafka:latest
     container_name: kafka-init
     depends_on:
-      - kafka # Crucial: Ensure the broker is up before attempting to create topics
+      - kafka
     volumes:
-      - ./kafka/create-topics.sh:/tmp/create-topics.sh:z # Mount the script
-    # The command to execute the script once the container starts
+      - ./kafka/create-topics.sh:/tmp/create-topics.sh:z
     command: ["bash", "/tmp/create-topics.sh"]
     environment:
-      # Use the same network settings/internal host name
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
 
   producer:
-    # build:
-    # context: ./producer
-    # dockerfile: producer/producer-dockerfile
     image: crypto_producer:latest
     container_name: producer
     depends_on:
@@ -53,28 +48,20 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
 
   spark-processor:
-    # Use 'build' instead of 'image'
-    # build:
-    # context: .
-    # dockerfile: spark_processor/spark-processor-dockerfile # Assuming the Dockerfile is in the current directory
     image: crypto_spark_processor:latest
     container_name: spark-processor
     depends_on:
-      - kafka-init
+      - producer
     volumes:
-      # You still need a volume for the CRITICAL checkpoint location!
-      - ./spark_processor/checkpoint:/tmp/spark/checkpoint/vwap
+      - pyspark_checkpoints:/tmp/spark/checkpoint/vwap:Z
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
 
   dashboard:
-    # build:
-    # context: ./dashboard
-    # dockerfile: dashboard/dashboard-dockerfile
     image: crypto_dashboard:latest
     container_name: dashboard
     depends_on:
-      - kafka-init
+      - spark-processor
     ports:
       - "8000:8000"
     environment:
@@ -82,3 +69,4 @@ services:
 
 volumes:
   kafka_data:
+  pyspark_checkpoints:

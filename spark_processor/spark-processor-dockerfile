@@ -1,22 +1,45 @@
+# Base Spark image with Python
 FROM spark:4.0.1-scala2.13-java21-ubuntu
 
 USER root
 
-RUN set -ex; \
-    apt-get update; \
-    apt-get install -y python3 python3-pip; \
-    rm -rf /var/lib/apt/lists/*
+# Create a real home directory for the spark user
+RUN usermod -d /home/spark spark \
+ && mkdir -p /home/spark \
+ && chown -R spark:spark /home/spark
+
+RUN mkdir -p /tmp/spark/checkpoint/vwap && chown -R spark:spark /tmp/spark/checkpoint
+
+
+# Install required packages
+RUN apt-get update && apt-get install -y curl python3-pip \
+ && rm -rf /var/lib/apt/lists/*
+
+# Download Kafka connector jars into Spark's jars dir
+#RUN mkdir -p /opt/spark/jars && \
+#    curl -L -o /opt/spark/jars/spark-sql-kafka-0-10_2.13-4.0.1.jar \
+#    https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.13/4.0.1/spark-sql-kafka-0-10_2.13-4.0.1.jar && \
+#    curl -L -o /opt/spark/jars/spark-token-provider-kafka-0-10_2.13-4.0.1.jar \
+#    https://repo1.maven.org/maven2/org/apache/spark/spark-token-provider-kafka-0-10_2.13/4.0.1/spark-token-provider-kafka-0-10_2.13-4.0.1.jar
+#    curl -L -o /opt/spark/jars/kafka-clients-3.5.1.jar \
+#    https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.5.1/kafka-clients-3.5.1.jar
+
+# Add Kafka clients JAR
+#RUN curl -L -o /opt/spark/jars/kafka-clients-3.5.1.jar \
+#  https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.5.1/kafka-clients-3.5.1.jar
+
 
 USER spark
-
-COPY spark_processor.py /app/spark_processor.py
 WORKDIR /app
 
-ENV SPARK_PACKAGES="org.apache.spark:spark-sql-kafka-0-10_2.13:4.0.1,org.apache.kafka:kafka-clients:3.5.1"
+# Copy your Python processing code
+COPY spark_processor.py /app/spark_processor.py
 
+# Set HOME so that Spark can write any user cache if needed
+ENV HOME=/home/spark
 
-
+# Run Spark without needing --packages (jars already in place)
 CMD ["/opt/spark/bin/spark-submit", \
      "--master", "local[*]", \
-     "--packages", "org.apache.spark:spark-sql-kafka-0-10_2.13:4.0.1,org.apache.kafka:kafka-clients:3.5.1", \
+     "--packages", "org.apache.spark:spark-sql-kafka-0-10_2.13:4.0.1", \
      "spark_processor.py"]

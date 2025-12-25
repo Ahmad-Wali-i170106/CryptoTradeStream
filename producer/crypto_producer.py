@@ -11,7 +11,7 @@ from loguru import logger
 # Real-time trades for Bitcoin/USDT
 # BINANCE_WEBSOCKET_URL = "wss://stream.binance.com:9443/ws/btcusdt@trade"
 BINANCE_WEBSOCKET_URL = "wss://stream.binance.com:9443/stream?streams=btcusdt@trade/ethusdt@trade/bnbusdt@trade/solusdt@trade/xrpusdt@trade"
-
+# BINANCE_WEBSOCKET_URL = "wss://stream.binance.com:9443/stream?streams=btcusdt@trade"
 # --- WebSocket Callbacks ---
 
 
@@ -30,13 +30,16 @@ def on_message(ws, message, producer: Producer):
             )
 
     try:
-        data = json.loads(message)
-
+        data = json.loads(message).get("data", {})
+        if not data or "s" not in data:
+            raise Exception(
+                f"Received unexpected message format: {message}. Skipping..."
+            )
         # Extract the necessary fields for your pipeline
-        trade_id = data.get("t")
-        symbol = data.get("s")
-        price = data.get("p")
-        quantity = data.get("q")
+        trade_id = data.get("t", "N/A")
+        symbol = data.get("s", "N/A")
+        price = data.get("p", -1)
+        quantity = data.get("q", -1)
 
         # Simple logging to show it's working
         logger.info(
@@ -45,7 +48,7 @@ def on_message(ws, message, producer: Producer):
 
         # --- PLACE KAFKA PRODUCER CODE HERE ---
         producer.produce(
-            "raw_trades", key=symbol, value=message, callback=delivery_report
+            "raw_trades", key=symbol, value=json.dumps(data), callback=delivery_report
         )
         producer.flush()
 
@@ -91,7 +94,7 @@ if __name__ == "__main__":
 
     # Run forever. reconnect=True is useful for production, but can be omitted here.
     ws.run_forever(
-        dispatcher=rel, reconnect=5
+        dispatcher=rel, reconnect=False
     )  # Set dispatcher to automatic reconnection, 5 second reconnect delay if connection closed unexpectedly
     rel.signal(2, rel.abort)  # Keyboard Interrupt
     rel.dispatch()

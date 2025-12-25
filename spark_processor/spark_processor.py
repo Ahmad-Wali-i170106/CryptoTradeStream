@@ -40,13 +40,17 @@ spark.sparkContext.setLogLevel("WARN")
 kafka_df = (
     spark.readStream.format("kafka")
     .option(
-        "kafka.bootstrap.servers", os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
+        "kafka.bootstrap.servers", os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
     )
     .option("subscribe", "raw_trades")
     .option("startingOffsets", "latest")
     .load()
 )
 
+# Log raw Kafka input
+kafka_df.writeStream.format("console").outputMode("append").start()
+
+# kafka_df.printSchema()
 # 4. Transform and Select Data
 # Extract the value (which is a JSON string), cast to defined schema, and convert strings to double.
 stream_df = (
@@ -54,15 +58,15 @@ stream_df = (
     .select(from_json(col("value"), trade_schema).alias("data"), col("timestamp"))
     .select(
         col("data.s").alias("symbol"),
-        (col("data.E").cast(TimestampType()) / 1000).alias(
-            "event_time"
-        ),  # Convert Unix ms to Timestamp
+        (col("data.E") / 1000)
+        .cast(TimestampType())
+        .alias("event_time"),  # Convert Unix ms to Timestamp
         col("data.p").cast(DoubleType()).alias("price"),
         col("data.q").cast(DoubleType()).alias("quantity"),
     )
     .withColumn("volume_price", col("price") * col("quantity"))
 )  # Calculated field for VWAP numerator
-
+# stream_df.head()
 # Apply Streaming Aggregation (VWAP Calculation)
 # VWAP (Volume-Weighted Average Price) is SUM(Price * Quantity) / SUM(Quantity)
 windowed_vwap_df = (
@@ -111,6 +115,13 @@ volatility_df = (
     .filter(sql_abs(col("percent_change")) > VOLATILITY_THRESHOLD)
 )
 
+# Log VWAP aggregation
+windowed_vwap_df.writeStream.format("console").outputMode("update").start()
+
+# Log volatility alerts
+volatility_df.writeStream.format("console").outputMode("update").start()
+
+
 # 6. Write Stream to Kafka ('processed_metrics' topic)
 # Convert the structured data back into a Kafka message format (JSON string value)
 # checkpointing is CRITICAL for stateful operations!
@@ -120,10 +131,11 @@ vwap_query = (
         "to_json(struct(*)) AS value",  # Package all columns into a single JSON string
     )
     .writeStream.format("kafka")
-    .option("kafka.bootstrap.servers", "kafka:29092")
+    .option(
+        "kafka.bootstrap.servers", os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+    )
     .option("topic", "processed_metrics")
     .option("checkpointLocation", "/tmp/spark/checkpoint/vwap")
-    .outputMode("update")
     .start()
 )
 
@@ -134,13 +146,14 @@ alerts_query = (
     )
     .writeStream.format("kafka")
     .option(
-        "kafka.bootstrap.servers", os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:29092")
+        "kafka.bootstrap.servers", os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
     )
     .option("topic", "alerts")
     .option("checkpointLocation", "/tmp/spark/checkpoint/alerts")
-    .outputMode("update")
     .start()
 )
 
 # Wait for the termination of the query (i.e., run forever)
-vwap_query.awaitTermination()
+# alerts_query.awaitTermination()
+# vwap_query.awaitTermination()
+spark.streams.awaitAnyTermination()
