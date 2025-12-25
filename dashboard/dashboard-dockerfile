@@ -20,8 +20,8 @@ RUN pip install --no-cache-dir \
     streamlit \
     pandas \
     confluent-kafka \
-    loguru \
-    streamlit-autorefresh
+    loguru #\
+    #streamlit-autorefresh
 
 # Streamlit configuration
 ENV STREAMLIT_SERVER_PORT=8000 \
