@@ -1,4 +1,5 @@
 import os
+import time
 
 import pandas as pd
 import streamlit as st
@@ -24,7 +25,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 st.title("Crypto VWAP Dashboard")
-st.caption("View VWAP, volume, and alerts from Kafka topics.")
+st.caption("View VWAP, volume, and alerts from Kafka topics in real-time.")
 
 # Configuration
 bootstrap_servers = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
@@ -110,111 +111,103 @@ if "alerts_df" not in st.session_state:
         ]
     )
 
-# Sidebar controls
-with st.sidebar:
-    st.header("Dashboard Controls")
-    if st.button("🔄 Refresh Data"):
-        # Poll metrics
-        metrics_consumer = get_metrics_consumer()
-        new_metrics = poll_metrics(metrics_consumer)
-        if new_metrics:
-            metrics_df = pd.DataFrame(new_metrics)
-            metrics_df["window_end"] = pd.to_datetime(
-                metrics_df["window_end"], errors="coerce"
+# Real-time dashboard
+placeholder = st.empty()
+
+while True:
+    # Poll metrics
+    metrics_consumer = get_metrics_consumer()
+    new_metrics = poll_metrics(metrics_consumer)
+    if new_metrics:
+        metrics_df = pd.DataFrame(new_metrics)
+        metrics_df["window_end"] = pd.to_datetime(
+            metrics_df["window_end"], errors="coerce"
+        )
+        metrics_df["vwap"] = pd.to_numeric(metrics_df["vwap"], errors="coerce")
+        metrics_df["total_volume"] = pd.to_numeric(
+            metrics_df["total_volume"], errors="coerce"
+        )
+        st.session_state.metrics_df = pd.concat(
+            [st.session_state.metrics_df, metrics_df], ignore_index=True
+        ).drop_duplicates(subset=["window_end", "symbol"], keep="last")
+
+    # Poll alerts
+    alerts_consumer = get_alerts_consumer()
+    new_alerts = poll_alerts(alerts_consumer)
+    if new_alerts:
+        alerts_df = pd.DataFrame(new_alerts)
+        alerts_df["window_start"] = pd.to_datetime(
+            alerts_df["window_start"], errors="coerce"
+        )
+        alerts_df["window_end"] = pd.to_datetime(
+            alerts_df["window_end"], errors="coerce"
+        )
+        alerts_df["percent_change"] = pd.to_numeric(
+            alerts_df["percent_change"], errors="coerce"
+        )
+        alerts_df["first_price"] = pd.to_numeric(
+            alerts_df["first_price"], errors="coerce"
+        )
+        alerts_df["last_price"] = pd.to_numeric(
+            alerts_df["last_price"], errors="coerce"
+        )
+        st.session_state.alerts_df = pd.concat(
+            [st.session_state.alerts_df, alerts_df], ignore_index=True
+        ).drop_duplicates(subset=["window_end", "symbol"], keep="last")
+
+    # Display dashboard content
+    with placeholder.container():
+        metrics_df = st.session_state.metrics_df.dropna(subset=["window_end"])
+        alerts_df = st.session_state.alerts_df.dropna(subset=["window_end"])
+
+        if metrics_df.empty and alerts_df.empty:
+            st.info(
+                "⏳ Waiting for data... Ensure Kafka is running and data is being produced."
             )
-            metrics_df["vwap"] = pd.to_numeric(metrics_df["vwap"], errors="coerce")
-            metrics_df["total_volume"] = pd.to_numeric(
-                metrics_df["total_volume"], errors="coerce"
-            )
-            st.session_state.metrics_df = pd.concat(
-                [st.session_state.metrics_df, metrics_df], ignore_index=True
-            ).drop_duplicates(subset=["window_end", "symbol"], keep="last")
-            logger.info(f"Metrics updated: {len(new_metrics)} new records added.")
         else:
-            st.warning("No new metrics data received.")
+            # Display metrics data
+            if not metrics_df.empty:
+                metrics_df = metrics_df.sort_values("window_end")
+                latest_metrics = metrics_df.groupby("symbol").tail(1)
 
-        # Poll alerts
-        alerts_consumer = get_alerts_consumer()
-        new_alerts = poll_alerts(alerts_consumer)
-        if new_alerts:
-            alerts_df = pd.DataFrame(new_alerts)
-            alerts_df["window_start"] = pd.to_datetime(
-                alerts_df["window_start"], errors="coerce"
-            )
-            alerts_df["window_end"] = pd.to_datetime(
-                alerts_df["window_end"], errors="coerce"
-            )
-            alerts_df["percent_change"] = pd.to_numeric(
-                alerts_df["percent_change"], errors="coerce"
-            )
-            alerts_df["first_price"] = pd.to_numeric(
-                alerts_df["first_price"], errors="coerce"
-            )
-            alerts_df["last_price"] = pd.to_numeric(
-                alerts_df["last_price"], errors="coerce"
-            )
-            st.session_state.alerts_df = pd.concat(
-                [st.session_state.alerts_df, alerts_df], ignore_index=True
-            ).drop_duplicates(subset=["window_end", "symbol"], keep="last")
-            logger.info(f"Alerts updated: {len(new_alerts)} new records added.")
-        else:
-            st.warning("No new alerts data received.")
+                st.subheader("Latest VWAP")
+                st.dataframe(
+                    latest_metrics[
+                        ["symbol", "vwap", "total_volume", "window_end"]
+                    ].sort_values("symbol"),
+                    use_container_width=True,
+                    hide_index=True,
+                )
 
-# Main content
-metrics_df = st.session_state.metrics_df.dropna(subset=["window_end"])
-alerts_df = st.session_state.alerts_df.dropna(subset=["window_end"])
+                st.subheader("VWAP Over Time")
+                vwap_pivot = metrics_df.pivot(
+                    index="window_end", columns="symbol", values="vwap"
+                )
+                if not vwap_pivot.empty:
+                    st.line_chart(vwap_pivot)
 
-if metrics_df.empty and alerts_df.empty:
-    st.info(
-        "⏳ Waiting for data... Ensure Kafka is running and data is being produced."
-    )
-else:
-    # Display metrics data
-    if not metrics_df.empty:
-        metrics_df = metrics_df.sort_values("window_end")
-        latest_metrics = metrics_df.groupby("symbol").tail(1)
+                st.subheader("Volume Over Time")
+                vol_pivot = metrics_df.pivot(
+                    index="window_end", columns="symbol", values="total_volume"
+                )
+                if not vol_pivot.empty:
+                    st.area_chart(vol_pivot)
 
-        st.subheader("Latest VWAP")
-        st.dataframe(
-            latest_metrics[
-                ["symbol", "vwap", "total_volume", "window_end"]
-            ].sort_values("symbol"),
-            use_container_width=True,
-            hide_index=True,
-        )
+            # Display alerts data
+            if not alerts_df.empty:
+                st.subheader("Recent Alerts")
+                st.dataframe(
+                    alerts_df[
+                        [
+                            "window_end",
+                            "symbol",
+                            "percent_change",
+                            "first_price",
+                            "last_price",
+                        ]
+                    ].sort_values("window_end", ascending=False),
+                    use_container_width=True,
+                    hide_index=True,
+                )
 
-        st.subheader("VWAP Over Time")
-        vwap_pivot = metrics_df.pivot(
-            index="window_end", columns="symbol", values="vwap"
-        )
-        if not vwap_pivot.empty:
-            st.line_chart(vwap_pivot)
-        else:
-            st.write("No data available.")
-
-        st.subheader("Volume Over Time")
-        vol_pivot = metrics_df.pivot(
-            index="window_end", columns="symbol", values="total_volume"
-        )
-        if not vol_pivot.empty:
-            st.area_chart(vol_pivot)
-        else:
-            st.write("No data available.")
-
-        st.subheader("Raw Metrics Data (Last 50 rows)")
-        st.dataframe(
-            metrics_df.tail(50).sort_values("window_end", ascending=False),
-            use_container_width=True,
-            hide_index=True,
-        )
-
-    # Display alerts data
-    if not alerts_df.empty:
-        st.subheader("Recent Alerts")
-        st.dataframe(
-            alerts_df[
-                ["window_end", "symbol", "percent_change", "first_price", "last_price"]
-            ].sort_values("window_end", ascending=False),
-            use_container_width=True,
-            hide_index=True,
-        )
+    time.sleep(5)  # Update every 5 seconds
