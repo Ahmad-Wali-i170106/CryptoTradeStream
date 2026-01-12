@@ -12,6 +12,7 @@ dependencies = [
     "loguru>=0.7.3",
     "pandas>=2.3.3",
     "pyspark>=4.0.1",
+    "python-dotenv>=1.2.1",
     "rel>=0.4.9.22",
     "streamlit>=1.52.1",
     "tzdata>=2025.2",

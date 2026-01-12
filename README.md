@@ -1,7 +1,6 @@
 # CryptoTradeStream
 
-CryptoTradeStream is a real-time cryptocurrency trading dashboard that provides users with live updates on market trends, price movements, and trading volumes. The project is designed to help traders make informed decisions by presenting data in an intuitive and visually appealing format.
-
+CryptoTradeStream is a streaming pipeline that ingests live cryptocurrency trade data, processes it using PySpark to calculate moving averages in real-time, and pushes alerts to a streamlit dashboard.
 ## Launch/Deploy Instructions
 
 1. **Clone the Repository**  
@@ -39,9 +38,13 @@ CryptoTradeStream is a real-time cryptocurrency trading dashboard that provides 
    Open your web browser and navigate to `http://localhost:8000` to view the dashboard.
 
 5. **Install Dependencies (Optional for Local Development)**  
-   If you want to run the application locally without Docker, ensure you have Python installed. Install the required dependencies:
+   If you want to run the application locally without Docker, ensure you have Python and uv installed. 
+   To install uv:
    ```bash
-   pip install uv
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   ```
+   Install the required dependencies:
+   ```bash
    uv sync
    ```
 
